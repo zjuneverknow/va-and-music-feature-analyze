@@ -1,0 +1,16 @@
+[project]
+name = "music-feature-analyze"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mido",
+    "numpy",
+    "librosa",
+    "pandas",
+    "scikit-learn",
+    "joblib",
+    "matplotlib",
+    "seaborn",
+]
