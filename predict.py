@@ -5,8 +5,17 @@ import joblib
 import numpy as np
 
 
-MODEL_PATH = Path("model/music_va_gmm_v1.pkl")
-INPUT_COLS = ["valence_mean", "valence_std", "arousal_mean", "arousal_std"]
+MODEL_PATHS = {
+    "v1": Path("model/music_va_gmm_v1.pkl"),
+    "v2": Path("model/music_va_gmm_v2.pkl"),
+}
+DEFAULT_MODEL_VERSION = "v2"
+MODEL_PATH = MODEL_PATHS[DEFAULT_MODEL_VERSION]
+INPUT_COLS_BY_VERSION = {
+    "v1": ["valence_mean", "valence_std", "arousal_mean", "arousal_std"],
+    "v2": ["valence_mean", "arousal_mean"],
+}
+INPUT_COLS = INPUT_COLS_BY_VERSION[DEFAULT_MODEL_VERSION]
 NON_NEGATIVE_FEATURES = {
     "tempo",
     "density",
@@ -39,6 +48,21 @@ def load_model(model_path):
     )
 
 
+def resolve_input_cols(model_version, feature_names):
+    if model_version in INPUT_COLS_BY_VERSION:
+        return INPUT_COLS_BY_VERSION[model_version]
+
+    feature_name_list = list(feature_names)
+    for cols in INPUT_COLS_BY_VERSION.values():
+        if feature_name_list[: len(cols)] == cols:
+            return cols
+
+    raise ValueError(
+        "Unable to infer input columns from model feature names. "
+        "Please provide --model-version explicitly."
+    )
+
+
 def postprocess_sample(sampled):
     processed = {}
     for name, value in sampled.items():
@@ -57,12 +81,19 @@ def sample_music_params(
     scaler,
     feature_names,
     rng,
+    input_cols,
     valence_std=0.0,
     arousal_std=0.0,
-    temperature = 0.1
+    temperature=0.1,
 ):
-    input_values = np.array([valence, valence_std, arousal, arousal_std], dtype=float)
-    input_dim = len(INPUT_COLS)
+    if input_cols == INPUT_COLS_BY_VERSION["v1"]:
+        input_values = np.array([valence, valence_std, arousal, arousal_std], dtype=float)
+    elif input_cols == INPUT_COLS_BY_VERSION["v2"]:
+        input_values = np.array([valence, arousal], dtype=float)
+    else:
+        raise ValueError(f"Unsupported input columns: {input_cols}")
+
+    input_dim = len(input_cols)
     scaled_input = (input_values - scaler.mean_[:input_dim]) / scaler.scale_[:input_dim]
 
     input_idx = list(range(input_dim))
@@ -112,11 +143,17 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Sample music parameters from a trained GMM.")
     parser.add_argument("--valence", type=float, default=0.2, help="Target valence mean.")
     parser.add_argument("--arousal", type=float, default=0.8, help="Target arousal mean.")
-    parser.add_argument("--valence-std", type=float, default=0.0, help="Target valence std.")
-    parser.add_argument("--arousal-std", type=float, default=0.0, help="Target arousal std.")
+    parser.add_argument("--valence-std", type=float, default=0.0, help="Target valence std for v1 models.")
+    parser.add_argument("--arousal-std", type=float, default=0.0, help="Target arousal std for v1 models.")
     parser.add_argument("--samples", type=int, default=3, help="Number of random samples to generate.")
     parser.add_argument("--seed", type=int, default=None, help="Optional random seed.")
-    parser.add_argument("--model-path", type=Path, default=MODEL_PATH, help="Path to saved model file.")
+    parser.add_argument(
+        "--model-version",
+        choices=["auto", *sorted(INPUT_COLS_BY_VERSION.keys())],
+        default="auto",
+        help="Model schema version. v1 expects 4D input, v2 expects 2D input.",
+    )
+    parser.add_argument("--model-path", type=Path, default=None, help="Path to saved model file.")
     return parser.parse_args()
 
 
@@ -124,29 +161,38 @@ def main():
     args = parse_args()
     if args.samples < 1:
         raise ValueError("--samples must be at least 1")
-    if not args.model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {args.model_path}")
+    default_model_version = DEFAULT_MODEL_VERSION if args.model_version == "auto" else args.model_version
+    model_path = args.model_path or MODEL_PATHS[default_model_version]
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
 
-    model, scaler, feature_names = load_model(args.model_path)
+    model, scaler, feature_names = load_model(model_path)
+    input_cols = resolve_input_cols(args.model_version, feature_names)
     rng = np.random.default_rng(args.seed)
 
-    print(f"Loaded model from {args.model_path}")
+    print(f"Loaded model from {model_path}")
     print(
         "Sampling with "
-        f"valence_mean={args.valence}, valence_std={args.valence_std}, "
-        f"arousal_mean={args.arousal}, arousal_std={args.arousal_std}"
+        f"valence_mean={args.valence}, "
+        f"arousal_mean={args.arousal}, "
+        f"model_version={args.model_version}"
     )
+    if len(input_cols) == 4:
+        print(
+            f"Using valence_std={args.valence_std}, arousal_std={args.arousal_std}"
+        )
 
     for sample_index in range(1, args.samples + 1):
         sampled = sample_music_params(
             valence=args.valence,
             arousal=args.arousal,
-            valence_std=args.valence_std,
-            arousal_std=args.arousal_std,
             model=model,
             scaler=scaler,
             feature_names=feature_names,
             rng=rng,
+            input_cols=input_cols,
+            valence_std=args.valence_std,
+            arousal_std=args.arousal_std,
         )
         print(f"\nSample {sample_index}:")
         for name, value in sampled.items():

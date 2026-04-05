@@ -34,9 +34,7 @@ def build_compare_table(data_path, model_path, seed):
         row_dict = row._asdict()
         predicted = sample_music_params(
             valence=float(row_dict["valence_mean"]),
-            valence_std=float(row_dict["valence_std"]),
             arousal=float(row_dict["arousal_mean"]),
-            arousal_std=float(row_dict["arousal_std"]),
             model=model,
             scaler=scaler,
             feature_names=feature_names,
@@ -46,9 +44,7 @@ def build_compare_table(data_path, model_path, seed):
         compare_row = {
             "song_id": row_dict.get("song_id"),
             "valence_mean": row_dict["valence_mean"],
-            "valence_std": row_dict["valence_std"],
             "arousal_mean": row_dict["arousal_mean"],
-            "arousal_std": row_dict["arousal_std"],
         }
 
         for col in output_cols:

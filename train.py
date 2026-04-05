@@ -9,8 +9,9 @@ from sklearn.preprocessing import StandardScaler
 
 DATASET_PATH = Path("dataset/audio_va.csv")
 MODEL_DIR = Path("model")
-MODEL_PATH = MODEL_DIR / "music_va_gmm_v1.pkl"
-INPUT_COLS = ["valence_mean", "valence_std", "arousal_mean", "arousal_std"]
+MODEL_PATH = MODEL_DIR / "music_va_gmm_v2.pkl"
+#INPUT_COLS = ["valence_mean", "valence_std", "arousal_mean", "arousal_std"]
+INPUT_COLS = ["valence_mean", "arousal_mean"]
 OUTPUT_COLS = [
     "tempo",
     "density",
@@ -63,7 +64,7 @@ def _gaussian_log_pdf(x, mean, covariance):
 
 
 def sample_with_scaling(v, a, model, scaler):
-    input_values = np.array([v, 0.0, a, 0.0], dtype=float)
+    input_values = np.array([v, a], dtype=float)
     input_dim = len(INPUT_COLS)
     scaled_input = (input_values - scaler.mean_[:input_dim]) / scaler.scale_[:input_dim]
 
